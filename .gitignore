@@ -172,5 +172,6 @@ data/
 *tune_results/
 *dl_ts/
 *lightning_logs/
-
-
+*model_checkpoint/*
+*.png
+*plots/*
