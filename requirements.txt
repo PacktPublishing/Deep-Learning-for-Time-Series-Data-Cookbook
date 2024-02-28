@@ -28,7 +28,7 @@ datasetsforecast==0.0.8
 Deprecated==1.2.14
 distlib==0.3.8
 exceptiongroup==1.2.0
-fastapi==0.108.0
+fastapi==0.109.1
 filelock==3.13.1
 flatbuffers==23.5.26
 fonttools==4.47.2
