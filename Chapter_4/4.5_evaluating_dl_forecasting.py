@@ -30,13 +30,13 @@ def series_to_supervised(data, n_in=1, n_out=1, dropnan=True):
 
 
 df = pd.read_csv(
-    "../assets/datasets/time_series_solar.csv",
+    "assets/datasets/time_series_solar.csv",
     parse_dates=["Datetime"],
     index_col="Datetime",
 )
 
 # Resample the data to daily frequency
-df = df.resample('D').sum()
+df = df.resample("D").sum()
 
 values = df["Incoming Solar"].values
 
@@ -85,7 +85,9 @@ for epoch in range(epochs):
     model.train()
     optimizer.zero_grad()
 
-    out = model(X_train).reshape(-1,)
+    out = model(X_train).reshape(
+        -1,
+    )
     loss = loss_fn(out, y_train)
     loss.backward()
     optimizer.step()
@@ -95,14 +97,19 @@ for epoch in range(epochs):
 
 
 model.eval()
-y_pred = model(X_test).reshape(-1,)
+y_pred = model(X_test).reshape(
+    -1,
+)
 test_loss = loss_fn(y_pred, y_test)
 print(f"Test Loss: {test_loss.item()}")
 
 # ------------------------- Evaluation
 
 from sklearn.metrics import mean_squared_error
-from sktime.performance_metrics.forecasting import MeanAbsoluteScaledError, MeanAbsolutePercentageError
+from sktime.performance_metrics.forecasting import (
+    MeanAbsoluteScaledError,
+    MeanAbsolutePercentageError,
+)
 import numpy as np
 
 

@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import torch
 from pytorch_forecasting import TimeSeriesDataSet
 
 # loading a multivariate time series
@@ -53,8 +52,15 @@ dataset = TimeSeriesDataSet(
     time_idx="time_index",
     max_encoder_length=7,
     max_prediction_length=1,
-    time_varying_unknown_reals=['Incoming Solar', 'Wind Dir', 'Snow Depth', 'Wind Speed', 'Dewpoint',
-                                'Precipitation', 'Vapor Pressure', 'Relative Humidity', 'Air Temp'],
+    time_varying_unknown_reals=['Incoming Solar',
+                                'Wind Dir',
+                                'Snow Depth',
+                                'Wind Speed',
+                                'Dewpoint',
+                                'Precipitation',
+                                'Vapor Pressure',
+                                'Relative Humidity',
+                                'Air Temp'],
 )
 
 # convert the dataset to a dataloader

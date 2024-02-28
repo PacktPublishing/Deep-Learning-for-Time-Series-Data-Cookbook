@@ -1,10 +1,13 @@
 import pandas as pd
+import numpy as np
+import matplotlib
+
+matplotlib.use('TkAgg')
 
 data = pd.read_csv('assets/datasets/time_series_smf1.csv',
                    parse_dates=['datetime'],
                    index_col='datetime')
 
-# print(data.head().to_latex(escape=False,header=['\\rotatebox{90}{' + c + '}' for c in data.columns]))
 
 class LogTransformation:
 
@@ -27,6 +30,5 @@ mv_plot = data_log.tail(1000).plot(figsize=(15, 8),
                                    title='Multivariate time series',
                                    xlabel='',
                                    ylabel='Value')
-# mv_plot.legend(['A simple line'])
 mv_plot.legend(fancybox=True, framealpha=1)
 mv_plot.figure.savefig('assets/mts_plot.png')

@@ -1,4 +1,3 @@
-# copied and adapted recipe from 4.9
 import numpy as np
 import pandas as pd
 import torch

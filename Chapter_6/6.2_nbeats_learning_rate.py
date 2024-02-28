@@ -3,19 +3,15 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from pytorch_forecasting import TimeSeriesDataSet
-from gluonts.dataset.repository.datasets import get_dataset
-from sktime.transformations.series.fourier import FourierFeatures
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import EarlyStopping
+from pytorch_forecasting import NBeats, TimeSeriesDataSet
+from gluonts.dataset.repository.datasets import get_dataset
+from lightning.pytorch.tuner import Tuner
 
 dataset = get_dataset("nn5_daily_without_missing", regenerate=False)
 
 N_LAGS = 7
-HORIZON = 3
+HORIZON = 7
 
 
 class LogTransformation:
@@ -49,6 +45,7 @@ class LocalScaler:
 
     def transform(self, df: pd.DataFrame):
         df = df.copy()
+
         df["value"] = LogTransformation.transform(df["value"])
 
         df_g = df.groupby("group_id")
@@ -63,26 +60,8 @@ class LocalScaler:
 
         return transf_df
 
-    def inverse_transform(self, df: pd.DataFrame, col_name=None):
-        df = df.copy()
-        if col_name is None:
-            col_name = "value"
 
-        df_g = df.groupby("group_id")
-        itransf_df_l = []
-        for g, df_ in df_g:
-            df_[[col_name]] = self.scalers[g].inverse_transform(df_[[col_name]])
-
-            itransf_df_l.append(df_)
-
-        itransf_df = pd.concat(itransf_df_l)
-        itransf_df = itransf_df.sort_index()
-        itransf_df[col_name] = LogTransformation.inverse_transform(itransf_df[col_name])
-
-        return itransf_df
-
-
-class GlobalDataModuleSeas(pl.LightningDataModule):
+class GlobalDataModule(pl.LightningDataModule):
     def __init__(
         self, data, n_lags: int, horizon: int, test_size: float, batch_size: int
     ):
@@ -119,16 +98,8 @@ class GlobalDataModuleSeas(pl.LightningDataModule):
         tseries_df = pd.concat(data_list, axis=1)
         tseries_df["time_index"] = np.arange(tseries_df.shape[0])
 
-        ts_df = tseries_df.reset_index().melt(["time_index", "index"])
+        ts_df = tseries_df.melt("time_index")
         ts_df = ts_df.rename(columns={"variable": "group_id"})
-
-        fourier = FourierFeatures(
-            sp_list=[7], fourier_terms_list=[2], keep_original_columns=False
-        )
-
-        fourier_features = fourier.fit_transform(ts_df["index"])
-
-        ts_df = pd.concat([ts_df, fourier_features], axis=1).drop("index", axis=1)
 
         unique_times = ts_df["time_index"].sort_values().unique()
 
@@ -156,7 +127,7 @@ class GlobalDataModuleSeas(pl.LightningDataModule):
             max_encoder_length=self.n_lags,
             max_prediction_length=self.horizon,
             time_varying_unknown_reals=["value"],
-            time_varying_known_reals=["sin_7_1", "cos_7_1", "sin_7_2", "cos_7_2"],
+            target_normalizer=None,
         )
 
         self.validation = TimeSeriesDataSet.from_dataset(self.training, validation_df)
@@ -178,77 +149,33 @@ class GlobalDataModuleSeas(pl.LightningDataModule):
         return self.predict_set.to_dataloader(batch_size=1, shuffle=False)
 
 
-class GlobalLSTM(pl.LightningModule):
-    def __init__(self, input_dim, hidden_dim, num_layers, output_dim):
-        super().__init__()
-        self.hidden_dim = hidden_dim
-        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_dim, output_dim)
-
-    def forward(self, x):
-        h0 = torch.zeros(self.lstm.num_layers, x.size(0), self.hidden_dim).to(
-            self.device
-        )
-        c0 = torch.zeros(self.lstm.num_layers, x.size(0), self.hidden_dim).to(
-            self.device
-        )
-
-        out, _ = self.lstm(x, (h0, c0))
-
-        out = self.fc(out[:, -1, :])
-
-        return out
-
-    def training_step(self, batch, batch_idx):
-        x, y = batch
-
-        y_pred = self(x["encoder_cont"])
-
-        loss = F.mse_loss(y_pred, y[0])
-        self.log("train_loss", loss)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        x, y = batch
-
-        y_pred = self(x["encoder_cont"])
-
-        loss = F.mse_loss(y_pred, y[0])
-        self.log("val_loss", loss)
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-
-        y_pred = self(x["encoder_cont"])
-
-        loss = F.mse_loss(y_pred, y[0])
-        self.log("test_loss", loss)
-
-    def predict_step(self, batch, batch_idx, dataloader_idx=0):
-        x, y = batch
-
-        y_pred = self(x["encoder_cont"])
-
-        return y_pred
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=0.01)
-
-
-model = GlobalLSTM(input_dim=5, hidden_dim=32, num_layers=1, output_dim=HORIZON)
-
-datamodule = GlobalDataModuleSeas(
-    data=dataset, n_lags=N_LAGS, horizon=HORIZON, batch_size=128, test_size=0.3
+datamodule = GlobalDataModule(
+    data=dataset, n_lags=N_LAGS, horizon=HORIZON, batch_size=32, test_size=0.2
 )
 
-early_stop_callback = EarlyStopping(
-    monitor="val_loss", min_delta=1e-4, patience=10, verbose=False, mode="min"
+datamodule.setup()
+
+# SETTING UP MODEL
+
+trainer = pl.Trainer(accelerator="auto", gradient_clip_val=0.01)
+tuner = Tuner(trainer)
+
+model = NBeats.from_dataset(
+    datamodule.training,
+    learning_rate=3e-2,
+    weight_decay=1e-2,
+    widths=[32, 512],
+    backcast_loss_ratio=0.1,
 )
 
-trainer = pl.Trainer(max_epochs=20, callbacks=[early_stop_callback])
+lr_optim = tuner.lr_find(
+    model,
+    train_dataloaders=datamodule.train_dataloader(),
+    val_dataloaders=datamodule.val_dataloader(),
+    min_lr=1e-5,
+)
 
-trainer.fit(model, datamodule)
+lr_optim.suggestion()
 
-trainer.test(model=model, datamodule=datamodule)
-forecasts = trainer.predict(model=model, datamodule=datamodule)
+fig = lr_optim.plot(show=True, suggest=True)
+fig.show()

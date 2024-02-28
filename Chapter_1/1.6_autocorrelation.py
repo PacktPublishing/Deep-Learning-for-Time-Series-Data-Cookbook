@@ -2,6 +2,10 @@ import pandas as pd
 from statsmodels.tsa.stattools import acf, pacf
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 
+import matplotlib
+
+matplotlib.use('TkAgg')
+
 data = pd.read_csv('assets/datasets/time_series_solar.csv',
                    parse_dates=['Datetime'],
                    index_col='Datetime')
@@ -18,6 +22,3 @@ pacf_plot_ = plot_pacf(series_daily, lags=365)
 plot = plot_acf(series, lags=48)
 plot = plot_acf(series, lags=365 * 24 * 2)
 plot = plot_pacf(series, lags=72)
-
-acf_plot_.savefig('assets/acf_daily.png')
-pacf_plot_.savefig('assets/pacf_daily.png')

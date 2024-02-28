@@ -65,12 +65,30 @@ class FeedForwardNN(nn.Module):
         super(FeedForwardNN, self).__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, output_dim)
-        self.activation = nn.Tanh()
+        self.activation = nn.ReLU()
 
     def forward(self, x):
         out = self.activation(self.fc1(x))
         out = self.fc2(out)
         return out
+
+
+class GRUNet(nn.Module):
+
+    def init(self, input_dim, hidden_dim, output_dim=1, num_layers=2):
+        super(GRUNet, self).init()
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
+
+        self.gru = nn.GRU(input_dim, hidden_dim, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, x):
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_dim).to(x.device)
+        out, _ = self.gru(x, h0)
+        out = self.fc(out[:, -1, :])
+        return out
+
 
 
 model = FeedForwardNN(input_dim=X_train.shape[1],

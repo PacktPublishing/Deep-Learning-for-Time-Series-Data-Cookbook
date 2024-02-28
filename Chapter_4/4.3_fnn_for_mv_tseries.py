@@ -1,16 +1,16 @@
+import os
+import matplotlib.pyplot as plt
+
 import numpy as np
 import pandas as pd
-
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
-from torch import nn
+from sklearn.preprocessing import StandardScaler
 import torch
 import torch.nn.functional as F
+from torch import nn
 from pytorch_forecasting import TimeSeriesDataSet
-from lightning.pytorch.loggers import TensorBoardLogger
+from pytorch_forecasting.models import BaseModel
 import lightning.pytorch as pl
-
-logger = TensorBoardLogger("logs/")
 
 N_LAGS = 7
 HORIZON = 1
@@ -40,12 +40,11 @@ class MultivariateSeriesDataModule(pl.LightningDataModule):
         self.test_size = test_size
         self.n_lags = n_lags
         self.horizon = horizon
-        self.target_scaler = MinMaxScaler()
+        self.target_scaler = StandardScaler()
         self.training = None
         self.validation = None
         self.test = None
         self.predict_set = None
-        self.setup()
 
     def preprocess_data(self):
         self.data["target"] = self.data["Incoming Solar"]
@@ -95,7 +94,7 @@ class MultivariateSeriesDataModule(pl.LightningDataModule):
             max_encoder_length=self.n_lags,
             max_prediction_length=self.horizon,
             time_varying_unknown_reals=self.feature_names,
-            scalers={name: MinMaxScaler() for name in self.feature_names},
+            scalers={name: StandardScaler() for name in self.feature_names},
         )
         self.validation = TimeSeriesDataSet.from_dataset(self.training, val_df)
         self.test = TimeSeriesDataSet.from_dataset(self.training, test_df)
@@ -116,54 +115,108 @@ class MultivariateSeriesDataModule(pl.LightningDataModule):
         return self.predict_set.to_dataloader(batch_size=1, shuffle=False)
 
 
-class MultivariateLSTM(pl.LightningModule):
-    def __init__(self, input_dim, hidden_dim, num_layers, output_dim):
+class FeedForwardNet(nn.Module):
+    def __init__(self, input_size, output_size):
         super().__init__()
-        self.hidden_dim = hidden_dim
-        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_dim, output_dim)
+
+        self.net = nn.Sequential(
+            nn.Linear(input_size, 16),
+            nn.ReLU(),
+            nn.Linear(16, 8),
+            nn.ReLU(),
+            nn.Linear(8, output_size),
+        )
+
+    def forward(self, X):
+        # Flatten the input tensor from [batch_size, N_LAGS, n_vars] to [batch_size, N_LAGS*n_vars]
+        X = X.view(X.size(0), -1)
+        return self.net(X)
+
+
+class FeedForwardModel(BaseModel):
+    def __init__(self, input_dim: int, output_dim: int):
+        self.save_hyperparameters()
+
+        super().__init__()
+        self.network = FeedForwardNet(
+            input_size=input_dim,
+            output_size=output_dim,
+        )
+
+        self.train_loss_history = []
+        self.val_loss_history = []
+
+        self.train_loss_sum = 0.0
+        self.val_loss_sum = 0.0
+        self.train_batch_count = 0
+        self.val_batch_count = 0
 
     def forward(self, x):
-        h0 = torch.zeros(self.lstm.num_layers, x.size(0), self.hidden_dim).to(
-            self.device
-        )
-        c0 = torch.zeros(self.lstm.num_layers, x.size(0), self.hidden_dim).to(
-            self.device
-        )
-        out, _ = self.lstm(x, (h0, c0))
-        out = self.fc(out[:, -1, :])
+        network_input = x["encoder_cont"].squeeze(-1)
 
-        return out
+        prediction = self.network(network_input)
+        output = self.to_network_output(prediction=prediction)
+
+        return output
+
+    def on_train_epoch_end(self):
+        # Compute the average loss and reset counters
+        if self.train_batch_count > 0:
+            avg_train_loss = self.train_loss_sum / self.train_batch_count
+            self.train_loss_history.append(avg_train_loss)
+            self.train_loss_sum = 0.0
+            self.train_batch_count = 0
+
+    def on_validation_epoch_end(self):
+        # Compute the average loss and reset counters
+        if self.val_batch_count > 0:
+            avg_val_loss = self.val_loss_sum / self.val_batch_count
+            self.val_loss_history.append(avg_val_loss)
+            self.val_loss_sum = 0.0
+            self.val_batch_count = 0
 
     def training_step(self, batch, batch_idx):
         x, y = batch
-        y_pred = self(x["encoder_cont"])
+        y_pred = self(x).prediction
         y_pred = y_pred.squeeze(1)
-        loss = F.mse_loss(y_pred, y[0])
+
+        y_actual = y[0].squeeze(1)
+
+        loss = F.mse_loss(y_pred, y_actual)
+        self.train_loss_sum += loss.item()
+        self.train_batch_count += 1
+
         self.log("train_loss", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
-        y_pred = self(x["encoder_cont"])
-
+        y_pred = self(x).prediction
         y_pred = y_pred.squeeze(1)
 
-        loss = F.mse_loss(y_pred, y[0])
+        y_actual = y[0].squeeze(1)
+
+        loss = F.mse_loss(y_pred, y_actual)
+        self.val_loss_sum += loss.item()
+        self.val_batch_count += 1
         self.log("val_loss", loss)
         return loss
 
     def test_step(self, batch, batch_idx):
         x, y = batch
-        y_pred = self(x["encoder_cont"])
+
+        y_pred = self(x).prediction
         y_pred = y_pred.squeeze(1)
-        loss = F.mse_loss(y_pred, y[0])
+
+        y_actual = y[0].squeeze(1)
+
+        loss = F.mse_loss(y_pred, y_actual)
         self.log("test_loss", loss)
 
-    def predict_step(self, batch, batch_idx, dataloader_idx=0):
+    def predict_step(self, batch, batch_idx):
         x, y = batch
 
-        y_pred = self(x["encoder_cont"])
+        y_pred = self(x).prediction
         y_pred = y_pred.squeeze(1)
 
         return y_pred
@@ -173,10 +226,35 @@ class MultivariateLSTM(pl.LightningModule):
 
 
 datamodule = MultivariateSeriesDataModule(
-    data=mvtseries, n_lags=N_LAGS, horizon=HORIZON, test_size=0.3, batch_size=16
+    data=mvtseries, n_lags=7, horizon=1, batch_size=32, test_size=0.3
 )
 
-model = MultivariateLSTM(input_dim=n_vars, hidden_dim=10, num_layers=1, output_dim=1)
+datamodule.setup()
 
-trainer = pl.Trainer(max_epochs=10, logger=logger)
-trainer.fit(model, datamodule=datamodule)
+model = FeedForwardModel(input_dim=N_LAGS * n_vars, output_dim=1)
+
+trainer = pl.Trainer(max_epochs=30)
+trainer.fit(model, datamodule)
+
+trainer.test(model=model, datamodule=datamodule)
+
+forecasts = trainer.predict(model=model, datamodule=datamodule)
+
+# Plot the average loss per epoch
+plt.figure(figsize=(10, 6))
+plt.plot(model.train_loss_history, label="Average Training Loss")
+plt.plot(model.val_loss_history, label="Average Validation Loss")
+plt.title("Average Training and Validation Losses Per Epoch")
+plt.xlabel("Epoch")
+plt.ylabel("Average Loss")
+plt.legend()
+plt.grid(True)  # Optional: Add grid for better readability
+
+# Save the figure to the 'plots' directory
+plots_dir = "./assets/plots"
+os.makedirs(plots_dir, exist_ok=True)
+plot_path = os.path.join(plots_dir, "average_training_validation_loss_per_epoch.png")
+plt.savefig(plot_path)
+plt.close()
+
+print(f"Plot saved to {plot_path}")

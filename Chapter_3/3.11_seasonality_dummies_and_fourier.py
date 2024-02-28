@@ -1,4 +1,3 @@
-# copied and adapted recipe from 4.9
 import numpy as np
 import pandas as pd
 import torch
@@ -8,7 +7,9 @@ from sklearn.preprocessing import MinMaxScaler
 from sktime.transformations.series.date import DateTimeFeatures
 from sklearn.preprocessing import OneHotEncoder
 from sktime.transformations.series.fourier import FourierFeatures
+import matplotlib
 
+matplotlib.use('TkAgg')
 
 def series_to_supervised(data, n_in=1, n_out=1, dropnan=True):
     n_vars = 1 if len(data.shape) == 1 else data.shape[1]
@@ -72,7 +73,7 @@ date_features = DateTimeFeatures(ts_freq='D',
 train_dates = date_features.fit_transform(train_df.iloc[:, -1])
 train_dates = train_dates[['month_of_year', 'day_of_week']]
 
-encoder = OneHotEncoder(drop='first', sparse=False)
+encoder = OneHotEncoder(drop='first', sparse_output=False)
 encoded_feats = encoder.fit_transform(train_dates)
 
 train_dummies = pd.DataFrame(encoded_feats,
@@ -102,7 +103,7 @@ fourier = FourierFeatures(sp_list=[365.25],
 train_fourier = fourier.fit_transform(train_df.iloc[:, -1])
 test_fourier = fourier.transform(test_df.iloc[:, -1])
 
-train_fourier.head(366).plot()
+# train_fourier.head(366).plot()
 
 ### appending
 X_train = np.hstack([X_train, train_dummies, train_fourier])

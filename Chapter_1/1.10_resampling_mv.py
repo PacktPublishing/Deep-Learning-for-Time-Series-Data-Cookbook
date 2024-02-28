@@ -1,5 +1,8 @@
 import pandas as pd
 import numpy as np
+import matplotlib
+
+matplotlib.use('TkAgg')
 
 data = pd.read_csv('assets/datasets/time_series_smf1.csv',
                    parse_dates=['datetime'],

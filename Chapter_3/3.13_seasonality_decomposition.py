@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from sktime.forecasting.naive import NaiveForecaster
 
@@ -52,30 +51,7 @@ df_aux = pd.DataFrame(
      }
 )
 
-from plotnine import *
 
-dfr = df_aux.reset_index()
-dfm = dfr.melt('Datetime')
-dfm['variable'] = pd.Categorical(dfm['variable'],
-                                 categories=['Seasonal',
-                                             'Seasonally-adjusted'])
-
-plot = \
-    ggplot(dfm) + \
-    aes(x='Datetime', y='value') + \
-    facet_grid('variable ~.', scales='free') + \
-    theme_538(base_family='Palatino', base_size=12) + \
-    theme(plot_margin=.125,
-          axis_text_x=element_text(size=8),
-          legend_title=element_blank(),
-          panel_background=element_rect(fill='white'),
-          plot_background=element_rect(fill='white'),
-          strip_background=element_rect(fill='white'),
-          legend_background=element_rect(fill='white'),
-          strip_text=element_text(size=12, color='black'),
-          legend_position='none') + \
-    labs(x='', y='value') + \
-    geom_line(color='steelblue', size=1)
 
 # show train.plot and
 # show series_decomp.seasonal.plot
