@@ -12,7 +12,7 @@ from sklearn.preprocessing import StandardScaler
 import lightning.pytorch as pl
 import matplotlib
 
-matplotlib.use('TkAgg')
+matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 
 
@@ -42,9 +42,9 @@ class ContinuousDataModule(pl.LightningDataModule):
     def preprocess_data(self):
         self.data["target"] = self.data["Incoming Solar"]
         self.data["time_index"] = np.arange(len(self.data))
-        self.data[
-            "group_id"
-        ] = 0  # Assuming a single group for simplicity; adjust if needed
+        self.data["group_id"] = (
+            0  # Assuming a single group for simplicity; adjust if needed
+        )
 
     def split_data(self):
         time_indices = self.data["time_index"].values
@@ -174,20 +174,20 @@ upper_sorted = upper.numpy()[sorted_indices]
 train_end = max(datamodule.train_indices)
 
 # Segment the data
-historical_x = time_feature_sorted[:train_end + 1]
-future_x = time_feature_sorted[train_end + 1:]
+historical_x = time_feature_sorted[: train_end + 1]
+future_x = time_feature_sorted[train_end + 1 :]
 
-historical_y = datamodule.original_y.numpy()[sorted_indices][:train_end + 1]
-future_y = datamodule.original_y.numpy()[sorted_indices][train_end + 1:]
+historical_y = datamodule.original_y.numpy()[sorted_indices][: train_end + 1]
+future_y = datamodule.original_y.numpy()[sorted_indices][train_end + 1 :]
 
-fitted_values = mean.numpy()[:train_end + 1]
-predicted_values = mean.numpy()[train_end + 1:]
+fitted_values = mean.numpy()[: train_end + 1]
+predicted_values = mean.numpy()[train_end + 1 :]
 
-fitted_lower = lower.numpy()[:train_end + 1]
-fitted_upper = upper.numpy()[:train_end + 1]
+fitted_lower = lower.numpy()[: train_end + 1]
+fitted_upper = upper.numpy()[: train_end + 1]
 
-predicted_lower = lower.numpy()[train_end + 1:]
-predicted_upper = upper.numpy()[train_end + 1:]
+predicted_lower = lower.numpy()[train_end + 1 :]
+predicted_upper = upper.numpy()[train_end + 1 :]
 
 plt.figure(figsize=(12, 7))
 
@@ -195,7 +195,14 @@ plt.figure(figsize=(12, 7))
 plt.plot(historical_x, historical_y, "k*", label="Historical Data")
 
 # Plot actual future data
-plt.plot(future_x, future_y, color=(0, 0.2, 0), marker="*", linestyle="None", label="Actual Future Data")
+plt.plot(
+    future_x,
+    future_y,
+    color=(0, 0.2, 0),
+    marker="*",
+    linestyle="None",
+    label="Actual Future Data",
+)
 
 # Plot fitted values and uncertainty for historical data
 plt.plot(historical_x, fitted_values, "b", label="Fitted Values for Historical Data")
@@ -210,4 +217,3 @@ plt.xlabel("Time Feature")
 plt.ylabel("Target Variable")
 plt.legend()
 plt.show()
-
