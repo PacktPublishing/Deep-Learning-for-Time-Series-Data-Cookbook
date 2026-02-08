@@ -1,6 +1,6 @@
 absl-py==2.1.0
 adagio==0.2.4
-aiohttp==3.9.3
+aiohttp==3.9.4
 aiohttp-cors==0.7.0
 aiorwlock==1.4.0
 aiosignal==1.3.1
